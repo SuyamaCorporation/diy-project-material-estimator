@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DIYプロジェクト材料費見積もり</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+<div id="app" class="max-w-2xl mx-auto p-4">
+  <h1 class="text-2xl font-bold text-center mb-6 text-yellow-400">🔨 DIY材料費見積もり</h1>
+
+  <div class="bg-gray-800 rounded-lg p-4 mb-6">
+    <h2 class="text-lg font-semibold mb-4 text-yellow-300">部屋サイズとプロジェクト</h2>
+    <div class="grid grid-cols-2 gap-3 mb-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">幅（m）</label>
+        <input id="width" type="number" value="4" min="0.1" step="0.1" class="w-full bg-gray-700 rounded px-3 py-2 text-white">
+      </div>
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">奥行き（m）</label>
+        <input id="depth" type="number" value="5" min="0.1" step="0.1" class="w-full bg-gray-700 rounded px-3 py-2 text-white">
+      </div>
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">天井高（m）※壁の場合</label>
+        <input id="height" type="number" value="2.4" min="0.1" step="0.1" class="w-full bg-gray-700 rounded px-3 py-2 text-white">
+      </div>
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">プロジェクト種類</label>
+        <select id="project" class="w-full bg-gray-700 rounded px-3 py-2 text-white">
+          <option value="paint-wall">ペンキ（壁）</option>
+          <option value="paint-ceiling">ペンキ（天井）</option>
+          <option value="flooring">フローリング</option>
+          <option value="tile">タイル（床）</option>
+          <option value="wallpaper">壁紙（全壁面）</option>
+        </select>
+      </div>
+    </div>
+    <button id="calc-btn" class="w-full bg-yellow-600 hover:bg-yellow-700 rounded-lg py-3 font-bold">見積もりを計算</button>
+  </div>
+
+  <div id="results" class="hidden space-y-4">
+    <div class="bg-gray-800 rounded-lg p-4">
+      <h2 class="text-lg font-semibold mb-3 text-yellow-300">📐 面積計算</h2>
+      <div id="area-info" class="grid grid-cols-2 gap-2 text-sm"></div>
+    </div>
+
+    <div class="bg-gray-800 rounded-lg p-4">
+      <h2 class="text-lg font-semibold mb-3 text-yellow-300">🛒 必要材料</h2>
+      <div id="materials-list" class="space-y-2"></div>
+    </div>
+
+    <div class="bg-gray-800 rounded-lg p-4">
+      <h2 class="text-lg font-semibold mb-3 text-yellow-300">💰 費用概算</h2>
+      <div id="cost-breakdown" class="space-y-2 text-sm"></div>
+      <div id="total-cost" class="mt-3 text-center text-2xl font-bold text-green-400"></div>
+    </div>
+
+    <div class="bg-gray-800 rounded-lg p-4">
+      <h2 class="text-lg font-semibold mb-3 text-yellow-300">💡 DIYヒント</h2>
+      <div id="tips" class="text-sm text-gray-300 space-y-1"></div>
+    </div>
+  </div>
+</div>
+<script>
+const projects = {
+  'paint-wall': {
+    name: 'ペンキ（壁）',
+    calc: (w, d, h) => {
+      const wallArea = 2 * (w + d) * h;
+      return { baseArea: wallArea, unit: '壁面積' };
+    },
+    materials: (area) => [
+      { name: 'ペンキ（1缶=10㎡・2回塗り）', qty: Math.ceil(area / 5), unit: '缶', unitPrice: 2800 },
+      { name: 'ローラー', qty: 1, unit: '本', unitPrice: 500 },
+      { name: 'マスキングテープ', qty: Math.ceil(area / 20), unit: '巻', unitPrice: 300 },
+      { name: 'ビニールシート（養生）', qty: 2, unit: '枚', unitPrice: 400 },
+      { name: 'パテ（下地補修）', qty: 1, unit: '本', unitPrice: 600 },
+    ],
+    tips: ['マスキングテープは塗る前日に貼り、塗装後すぐに剥がす', '下地がザラザラな場合はサンドペーパーで整える', '2回塗りが基本。1回目は薄く、2回目で仕上げる'],
+  },
+  'paint-ceiling': {
+    name: 'ペンキ（天井）',
+    calc: (w, d) => ({ baseArea: w * d, unit: '天井面積' }),
+    materials: (area) => [
+      { name: 'ペンキ（天井用・1缶=8㎡）', qty: Math.ceil(area / 8), unit: '缶', unitPrice: 3200 },
+      { name: '長柄ローラー', qty: 1, unit: '本', unitPrice: 1200 },
+      { name: 'マスキングテープ（周囲）', qty: 2, unit: '巻', unitPrice: 300 },
+      { name: 'ビニールシート（床養生）', qty: 3, unit: '枚', unitPrice: 400 },
+    ],
+    tips: ['天井ペンキは首が疲れるため小さく分割して作業する', '照明は外してから作業', '飛び散り防止にゴーグル着用推奨'],
+  },
+  'flooring': {
+    name: 'フローリング',
+    calc: (w, d) => ({ baseArea: w * d, unit: '床面積' }),
+    materials: (area) => {
+      const withWaste = area * 1.1; // 10%廃棄ロス
+      return [
+        { name: 'フローリング材（㎡当たり）', qty: Math.ceil(withWaste), unit: '㎡', unitPrice: 3500 },
+        { name: '根太（下地材）', qty: Math.ceil(area / 2), unit: '本', unitPrice: 400 },
+        { name: '接着剤', qty: Math.ceil(area / 10), unit: '本', unitPrice: 800 },
+        { name: 'フロア釘', qty: 1, unit: '箱', unitPrice: 500 },
+        { name: '見切り材', qty: Math.ceil((Math.sqrt(area) * 4) / 2), unit: '本', unitPrice: 600 },
+      ];
+    },
+    tips: ['フローリングは施工前に48時間部屋で慣らし保管する', '10%以上の廃棄ロスを見込む', '端から5mm程度の隙間を確保（伸縮対策）'],
+  },
+  'tile': {
+    name: 'タイル（床）',
+    calc: (w, d) => ({ baseArea: w * d, unit: '床面積' }),
+    materials: (area) => {
+      const withWaste = area * 1.1;
+      return [
+        { name: 'タイル（30cm×30cm）', qty: Math.ceil(withWaste / 0.09), unit: '枚', unitPrice: 180 },
+        { name: 'タイル接着剤', qty: Math.ceil(area / 5), unit: '袋', unitPrice: 1200 },
+        { name: 'グラウト（目地材）', qty: Math.ceil(area / 8), unit: '袋', unitPrice: 800 },
+        { name: 'タイルカッター（レンタル）', qty: 1, unit: '日', unitPrice: 2000 },
+        { name: '十字スペーサー', qty: Math.ceil(area * 10), unit: '個', unitPrice: 5 },
+      ];
+    },
+    tips: ['十字スペーサーで均一な目地を確保', '端のタイルカットはカッターまたはディスクグラインダー', '接着剤は30分以内に貼り付ける'],
+  },
+  'wallpaper': {
+    name: '壁紙（全壁面）',
+    calc: (w, d, h) => {
+      const wallArea = 2 * (w + d) * h;
+      return { baseArea: wallArea, unit: '壁面積' };
+    },
+    materials: (area) => {
+      const withWaste = area * 1.1;
+      return [
+        { name: '壁紙（1本=50m・幅92cm）', qty: Math.ceil(withWaste / 46), unit: '本', unitPrice: 4500 },
+        { name: '壁紙糊（1袋=10㎡分）', qty: Math.ceil(withWaste / 10), unit: '袋', unitPrice: 500 },
+        { name: 'ローラー刷毛', qty: 1, unit: '本', unitPrice: 300 },
+        { name: 'ヘラ・スキージー', qty: 1, unit: 'セット', unitPrice: 600 },
+        { name: 'カッターナイフ（大）', qty: 1, unit: '本', unitPrice: 400 },
+      ];
+    },
+    tips: ['壁紙は上から下へ貼り、空気を押し出しながら', 'パターン合わせが必要な壁紙は20%多めに購入', '下地処理（パテ埋め）が仕上がりを左右する'],
+  },
+};
+
+document.getElementById('calc-btn').addEventListener('click', () => {
+  const w = parseFloat(document.getElementById('width').value) || 0;
+  const d = parseFloat(document.getElementById('depth').value) || 0;
+  const h = parseFloat(document.getElementById('height').value) || 0;
+  const pKey = document.getElementById('project').value;
+  const proj = projects[pKey];
+
+  const { baseArea, unit } = proj.calc(w, d, h);
+  const withWaste = baseArea * 1.1;
+
+  const areaDiv = document.getElementById('area-info');
+  areaDiv.innerHTML = '';
+  const areaData = [
+    ['実面積', baseArea.toFixed(2) + ' ㎡'],
+    ['廃棄ロス込み', withWaste.toFixed(2) + ' ㎡'],
+    ['算出対象', unit],
+    ['部屋面積（床）', (w * d).toFixed(2) + ' ㎡'],
+  ];
+  areaData.forEach(([l, v]) => {
+    const lEl = document.createElement('div');
+    lEl.className = 'text-gray-400';
+    lEl.textContent = l;
+    const vEl = document.createElement('div');
+    vEl.className = 'text-white font-bold';
+    vEl.textContent = v;
+    areaDiv.appendChild(lEl);
+    areaDiv.appendChild(vEl);
+  });
+
+  const mats = proj.materials(baseArea);
+  const matDiv = document.getElementById('materials-list');
+  matDiv.innerHTML = '';
+  let totalCost = 0;
+  mats.forEach(m => {
+    const cost = m.qty * m.unitPrice;
+    totalCost += cost;
+    const row = document.createElement('div');
+    row.className = 'flex justify-between items-center border-b border-gray-700 pb-2 text-sm';
+    const left = document.createElement('div');
+    const name = document.createElement('div');
+    name.className = 'text-gray-200';
+    name.textContent = m.name;
+    const qty = document.createElement('div');
+    qty.className = 'text-xs text-gray-400';
+    qty.textContent = m.qty + ' ' + m.unit + ' × ' + m.unitPrice.toLocaleString() + '円';
+    left.appendChild(name);
+    left.appendChild(qty);
+    const right = document.createElement('div');
+    right.className = 'text-yellow-300 font-bold';
+    right.textContent = cost.toLocaleString() + '円';
+    row.appendChild(left);
+    row.appendChild(right);
+    matDiv.appendChild(row);
+  });
+
+  document.getElementById('total-cost').textContent = '合計: ' + totalCost.toLocaleString() + '円（概算）';
+  document.getElementById('cost-breakdown').innerHTML = '';
+  const p = document.createElement('p');
+  p.className = 'text-gray-400';
+  p.textContent = `材料費合計（工賃別）: ${totalCost.toLocaleString()}円`;
+  const p2 = document.createElement('p');
+  p2.className = 'text-gray-400';
+  p2.textContent = `10%廃棄ロス込みの数量で算出しています`;
+  document.getElementById('cost-breakdown').appendChild(p);
+  document.getElementById('cost-breakdown').appendChild(p2);
+
+  const tipsDiv = document.getElementById('tips');
+  tipsDiv.innerHTML = '';
+  proj.tips.forEach(tip => {
+    const p = document.createElement('p');
+    p.textContent = '• ' + tip;
+    tipsDiv.appendChild(p);
+  });
+
+  document.getElementById('results').classList.remove('hidden');
+});
+
+document.getElementById('calc-btn').click();
+</script>
+</body>
+</html>
